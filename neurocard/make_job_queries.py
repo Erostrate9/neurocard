@@ -208,11 +208,11 @@ def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
 
         t1 = time.time()
 
-        true_card = ExecuteSql(spark, sql_query)[0][0]
+        # true_card = ExecuteSql(spark, sql_query)[0][0]
 
-        # cursor.execute(sql_query)
-        # result = cursor.fetchall()
-        # true_card = result[0][0]
+        cursor.execute(sql_query)
+        result = cursor.fetchall()
+        true_card = result[0][0]
 
         dur = time.time() - t1
 
@@ -293,10 +293,10 @@ def MakeTablesKey(table_names):
 def main(argv):
     del argv  # Unused.
 
-    # conn = pg.connect(FLAGS.db)
-    # conn.set_session(autocommit=True)
-    # cursor = conn.cursor()
-    cursor = None
+    conn = pg.connect(FLAGS.db)
+    conn.set_session(autocommit=True)
+    cursor = conn.cursor()
+    # cursor = None
 
     tables = datasets.LoadImdb(use_cols=None)
 
