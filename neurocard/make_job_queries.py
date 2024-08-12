@@ -53,13 +53,13 @@ flags.DEFINE_integer('min_filters', 3,
 flags.DEFINE_integer('max_filters', 7,
                      'Maximum # of filters (inclusive) a query can have.')
 flags.DEFINE_string(
-    'db', 'dbname=imdb host=127.0.0.1',
+    'db', 'dbname=imdb host=127.0.0.1 user=postgres password=postgres',
     'Configs for connecting to Postgres server (must be launched and running).')
 flags.DEFINE_string('output_csv', 'job-light-range-spark.csv',
                     'Path to CSV file to output into.')
-
+flags.DEFINE_string('use_cols', 'simple', 'Loads IMDB tables with a specified set of columns.')
 # Spark configs.
-flags.DEFINE_string('spark_master', 'local[*]', 'spark.master.')
+# flags.DEFINE_string('spark_master', 'local[*]', 'spark.master.')
 
 # Print selectivities.
 flags.DEFINE_bool(
@@ -69,15 +69,15 @@ flags.DEFINE_bool(
 JOB_LIGHT_OUTER_CARDINALITY = 2128877229383
 
 
-def ExecuteSql(spark, sql):
-    df = spark.sql(sql.replace(';', ''))
-    return df.collect()
+# def ExecuteSql(spark, sql):
+#     df = spark.sql(sql.replace(';', ''))
+#     return df.collect()
 
 
 def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
                 join_keys, rng):
     """Sample a tuple from actual join result then place filters."""
-    spark.catalog.clearCache()
+    # spark.catalog.clearCache()
 
     # TODO: this assumes single equiv class.
     join_items = list(join_keys.items())
@@ -110,7 +110,9 @@ def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
                                                                 sep='.')
             content_cols.append(disambiguated_name)
             numericals.append(disambiguated_name)
-
+    print('--------content_cols--------')
+    print(content_cols)
+    print('--------content_cols--------')
     # Build a concat table representing the join result schema.
     join_keys_list = [join_keys[n] for n in table_names]
     join_spec = join_utils.get_join_spec({
@@ -178,11 +180,19 @@ def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
                 [','.join((c, o, str(v))) for c, o, v in zip(cols, ops, vals)]))
 
             # Quote string literals & leave other literals alone.
+            # filter_clauses = '\n AND '.join([
+            #     '{} {} {}'.format(col, op, val)
+            #     if concat_table[col].data.dtype in [np.int64, np.float64] else
+            #     '{} {} \'{}\''.format(col, op, val)
+            #     for col, op, val in zip(cols, ops, vals)
+            # ])
+
+            # as mentioned in Fauce paper, we only generate filter clauses on
+            # numetric columns for JOB-light
             filter_clauses = '\n AND '.join([
                 '{} {} {}'.format(col, op, val)
-                if concat_table[col].data.dtype in [np.int64, np.float64] else
-                '{} {} \'{}\''.format(col, op, val)
                 for col, op, val in zip(cols, ops, vals)
+                if concat_table[col].data.dtype in [np.int64, np.float64]
             ])
 
             sql = template_for_execution.render(table_names=table_names,
@@ -196,8 +206,8 @@ def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
     true_cards = []
 
     for i, sql_query in enumerate(sql_queries):
-        DropBufferCache()
-        spark.catalog.clearCache()
+        # DropBufferCache()
+        # spark.catalog.clearCache()
 
         print('  Query',
               i,
@@ -238,44 +248,56 @@ def MakeQueries(spark, cursor, num_queries, tables_in_templates, table_names,
     return queries, true_cards
 
 
-def StartSpark(spark=None):
-    spark = SparkSession.builder.appName('make_job_queries')\
-        .config('spark.master', FLAGS.spark_master)\
-        .config('spark.driver.memory', '200g')\
-        .config('spark.eventLog.enabled', 'true')\
-        .config('spark.sql.warehouse.dir', '/home/ubuntu/spark-sql-warehouse')\
-        .config('spark.sql.cbo.enabled', 'true')\
-        .config('spark.memory.fraction', '0.9')\
-        .config('spark.driver.extraJavaOptions', '-XX:+UseG1GC')\
-        .config('spark.memory.offHeap.enabled', 'true')\
-        .config('spark.memory.offHeap.size', '100g')\
-        .enableHiveSupport()\
-        .getOrCreate()
+# def StartSpark(spark=None):
+#     spark = SparkSession.builder.appName('make_job_queries')\
+#         .config('spark.master', FLAGS.spark_master)\
+#         .config('spark.driver.memory', '200g')\
+#         .config('spark.eventLog.enabled', 'true')\
+#         .config('spark.sql.warehouse.dir', '/home/ubuntu/spark-sql-warehouse')\
+#         .config('spark.sql.cbo.enabled', 'true')\
+#         .config('spark.memory.fraction', '0.9')\
+#         .config('spark.driver.extraJavaOptions', '-XX:+UseG1GC')\
+#         .config('spark.memory.offHeap.enabled', 'true')\
+#         .config('spark.memory.offHeap.size', '100g')\
+#         .enableHiveSupport()\
+#         .getOrCreate()
 
-    print('Launched spark:', spark.sparkContext)
-    executors = str(
-        spark.sparkContext._jsc.sc().getExecutorMemoryStatus().keys().mkString(
-            '\n ')).strip()
-    print('{} executors:\n'.format(executors.count('\n') + 1), executors)
-    return spark
+#     print('Launched spark:', spark.sparkContext)
+#     executors = str(
+#         spark.sparkContext._jsc.sc().getExecutorMemoryStatus().keys().mkString(
+#             '\n ')).strip()
+#     print('{} executors:\n'.format(executors.count('\n') + 1), executors)
+#     return spark
 
 
 def DropBufferCache():
+    def is_colab():
+        try:
+            import google.colab
+            return True
+        except ImportError:
+            return False
+
     worker_addresses = os.path.expanduser('~/hosts-workers')
-    if os.path.exists(worker_addresses):
-        # If distributed, drop each worker.
-        print(
-            str(
-                subprocess.check_output([
-                    'parallel-ssh', '-h', worker_addresses, '--inline-stdout',
-                    'sync && sudo bash -c  \'echo 3 > /proc/sys/vm/drop_caches\' && free -h'
-                ])))
-    else:
-        # Drop this machine only.
-        subprocess.check_output(['sync'])
-        subprocess.check_output(
-            ['sudo', 'sh', '-c', 'echo 3 > /proc/sys/vm/drop_caches'])
+    
+    if is_colab():
+        print("Detected Colab environment. Skipping buffer cache drop.")
         subprocess.check_output(['free', '-h'])
+    else:
+        if os.path.exists(worker_addresses):
+            # If distributed, drop each worker.
+            output = subprocess.check_output([
+                'parallel-ssh', '-h', worker_addresses, '--inline-stdout',
+                'sync && sudo bash -c \'echo 3 > /proc/sys/vm/drop_caches\' && free -h'
+            ])
+            print(output.decode('utf-8'))
+        else:
+            # Drop this machine only.
+            subprocess.check_output(['sync'])
+            subprocess.check_output(
+                ['sudo', 'sh', '-c', 'echo 3 > /proc/sys/vm/drop_caches'])
+            output = subprocess.check_output(['free', '-h'])
+            print(output.decode('utf-8'))
 
 
 def file_len(fname):
@@ -297,8 +319,8 @@ def main(argv):
     conn.set_session(autocommit=True)
     cursor = conn.cursor()
     # cursor = None
-
-    tables = datasets.LoadImdb(use_cols=None)
+    print("FLAGS.use_cols", FLAGS.use_cols)
+    tables = datasets.LoadImdb(use_cols=FLAGS.use_cols)
 
     # Load all templates in original JOB-light.
     queries = utils.JobToQuery(FLAGS.job_light_csv, use_alias_keys=False)
@@ -388,7 +410,7 @@ def main(argv):
         print('next_template_idx', next_template_idx)
         print(tables_to_join_keys.items())
 
-        spark = StartSpark()
+        # spark = StartSpark()
         for i, (tables_to_join,
                 join_keys) in enumerate(tables_to_join_keys.items()):
 
@@ -404,9 +426,8 @@ def main(argv):
             table_names = tables_to_join.split('-')
 
             tables_in_templates = [tables[n] for n in table_names]
-
             queries.extend(
-                MakeQueries(spark, cursor, num_queries_per_template,
+                MakeQueries(None, cursor, num_queries_per_template,
                             tables_in_templates, table_names, join_keys, rng))
 
 

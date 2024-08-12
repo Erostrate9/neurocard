@@ -71,21 +71,22 @@ class JoinOrderBenchmark(object):
         list,
         {
             # 18487, 17447
-            'company_name': ['name_pcode_cf', 'name_pcode_sf'],
+            # 'company_name': ['name_pcode_cf', 'name_pcode_sf'],
             # 15482
-            'keyword': ['phonetic_code'],
+            # 'keyword': ['phonetic_code'],
             'info_type': [],
             'company_type': [],
             'movie_companies': [],
             'movie_keyword': [],
             # 26, 133, 23260, 97, 14907, 1409
             'title': [
-                'imdb_index', 'production_year', 'phonetic_code', 'season_nr',
-                'episode_nr', 'series_years'
+                'production_year'
+                # 'imdb_index', 'phonetic_code', 'season_nr',
+                # 'episode_nr', 'series_years'
             ],
             'movie_info_idx': [],
             # 1095
-            'cast_info': ['nr_order'],
+            # 'cast_info': ['nr_order'],
             'movie_info': [],
         })
 
@@ -305,7 +306,7 @@ def LoadImdb(table=None,
         return table
 
     tables = {}
-    for filepath in JoinOrderBenchmark.BASE_TABLE_PRED_COLS:
+    for filepath in list(JoinOrderBenchmark.BASE_TABLE_PRED_COLS):
         tables[filepath[0:-4]] = TryLoad(
             filepath[0:-4],
             data_dir + filepath,
