@@ -8,7 +8,6 @@ datasets
 models/*
 datasets/*
 *.log
-*.csv
 
 **/.DS_Store
 **/*.swp
