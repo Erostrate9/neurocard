@@ -1,3 +1,7 @@
+# Overview
+- Check out neurocard.ipynb for more details about environments.
+- Queries generation using make_job_queries.py is highly time-consuming. It may take more than 3 hours to generate 2070 queries.
+- If using Colab, High-RAM mode is essential for running make_job_queries.
 # NeuroCard
 
 <p>
